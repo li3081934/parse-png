@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <style>
+        * {
+            padding: 0;
+            margin: 0;
+            box-sizing: border-box;
+        }
+
+        #plte {
+            width: 500px;
+            line-height: 0;
+
+        }
+
+        #main {
+            line-height: 0;
+            margin: 100px auto 0 auto;
+            display: flex;
+            flex-wrap: wrap;
+        }
+
+        .plte-item {
+            width: 20px;
+            height: 20px;
+            display: inline-block;
+            border: 1px solid #bfbfbf
+        }
+
+        .pix-item {
+            /*display: inline-block;*/
+            width: 1px;
+            height: 1px;
+        }
+    </style>
+</head>
+<body>
+<input type="file" id="file"/>
+<div id="plte"></div>
+<div id="main"></div>
+</body>
+<script src="./zlib.min.js"></script>
+<script>
+	const PIX = 1;
+	let input = document.querySelector('#file');
+	let file;
+	let reader = new FileReader();
+	let index = 0;
+	let plteWrap = document.querySelector('#plte');
+	let mainWrap = document.querySelector('#main');
+	let width = 0;
+	let height = 0;
+	let colorMap = [];
+	let imgType = 0;
+	reader.addEventListener("loadend", function () {
+		// reader.result 包含转化为类型数组的blob
+		let dataArray = new Uint8Array(this.result);
+		let dataArrayLength = dataArray.length
+		let fileHeader = dataArray.slice(index, index += 8);
+		let parsedChunks = [];
+		//console.log(dataArray)
+		//console.log(fileHeader)
+		while (index < dataArrayLength) {
+			parsedChunks.push(chunkHandle())
+		}
+		console.log(parsedChunks)
+
+
+		parsedChunks.forEach(i => {
+			switch (i.chunkName) {
+				case 'tEXt' :
+					//console.log(IntArrayToString(i.data));
+					break;
+				case 'iTXt' :
+					//console.log(IntArrayToString(i.data));
+					break
+				case 'IDAT' :
+					let inflate = new Zlib.Inflate(i.data);
+					let plain = inflate.decompress();
+					console.log(plain);
+					mainDataHandle(plain);
+					break;
+				case 'PLTE' :
+					plteHandle(i.data);
+					break;
+				case 'IHDR':
+					headHandle(i.data);
+					break;
+
+			}
+
+		})
+
+
+		function chunkHandle() {
+			let chunkLength = IntArrayToNumber(dataArray.slice(index, index += 4));
+			let chunkName = IntArrayToString(dataArray.slice(index, index += 4));
+			let data = dataArray.slice(index, index += chunkLength);
+			let crc = dataArray.slice(index, index += 4);
+			return {
+				chunkLength,
+				chunkName,
+				data,
+				crc
+			}
+		}
+
+		function plteHandle(colorDataChunk) {
+			let colorPlte = [];
+			for (let index = 0; index < colorDataChunk.length; index += 3) {
+				let color = colorDataChunk.slice(index, index + 3);
+				colorPlte.push(`rgb(${color[0]}, ${color[1]}, ${color[2]})`)
+			}
+			colorMap = colorPlte;
+			// plteWrap.innerHTML = colorPlte.reduce((pre, cur) => {
+			// 	return pre += `<div class="plte-item" style="background-color:${cur}"></div>`
+			// }, '')
+		}
+
+		function headHandle(headDataChunk) {
+
+			let mainWidth = IntArrayToNumber(headDataChunk.slice(0, 4));
+			let mainHeight = IntArrayToNumber(headDataChunk.slice(4, 8));
+			width = mainWidth;
+			height = mainHeight;
+			imgType = IntArrayToNumber(headDataChunk.slice(9, 10));
+			mainWrap.style.width = mainWidth * PIX + 'px';
+			mainWrap.style.height = mainHeight * PIX + 'px';
+		}
+
+		function mainDataHandle(idatDataChunk) {
+			let imgMatrix = [];
+			console.log(imgType);
+			if (imgType === 3) {
+				for (let i = 0; i < height; i++) {
+					let row = [];
+					for (let j = 0; j < width; j++) {
+						//row.push(idatDataChunk[i * width + (j + i) + 1])
+						imgMatrix.push(idatDataChunk[i * width + (j + i) + 1])
+					}
+
+				}
+				mainWrap.innerHTML = imgMatrix.reduce((pre, cur) => {
+					return pre += `<div class="pix-item" style="background-color:${colorMap[cur]}"></div>`
+				}, '');
+			}
+			if (imgType === 2) {
+				for (let i = 0; i < height; i++) {
+					let row = [];
+					for (let j = 0; j < width * 3; j += 3) {
+						//row.push(idatDataChunk[i * width + (j + i) + 1])
+						imgMatrix.push(idatDataChunk.slice(i * width * 3 + (j + i) + 1, i * width * 3 + (j + i) + 1 + 3))
+					}
+
+				}
+				mainWrap.innerHTML = imgMatrix.reduce((pre, cur) => {
+					return pre += `<div class="pix-item" style="background-color:rgb(${cur[0]}, ${cur[1]}, ${cur[2]})"></div>`
+				}, '');
+			}
+			if (imgType === 6) {
+				for (let i = 0; i < height; i++) {
+					let row = [];
+					for (let j = 0; j < width * 4; j += 4) {
+						//row.push(idatDataChunk[i * width + (j + i) + 1])
+						imgMatrix.push(idatDataChunk.slice(i * width * 4 + (j + i) + 1, i * width * 4 + (j + i) + 1 + 4))
+					}
+
+				}
+				mainWrap.innerHTML = imgMatrix.reduce((pre, cur) => {
+					return pre += `<div class="pix-item" style="background-color:rgb(${cur[0]}, ${cur[1]}, ${cur[2]}, ${cur[3]/255})"></div>`
+				}, '');
+			}
+
+
+			debugger
+		}
+	});
+	input.addEventListener('change', function () {
+		file = this.files[0]
+		reader.readAsArrayBuffer(file);
+	});
+
+	function IntArrayToNumber(intArray) {
+		return intArray.reverse().reduce((pre, cur, index) => {
+			return pre += cur << (index * 8)
+		}, 0)
+	};
+
+	function IntArrayToString(intArray) {
+		return intArray.reduce((pre, cur) => {
+			return pre += String.fromCharCode(cur)
+		}, '');
+	}
+</script>
+</html>
